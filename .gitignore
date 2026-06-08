@@ -1,0 +1,12 @@
+# Ignore the entire Vivado working directory
+vivado_work/
+
+# Standard Vivado ignores
+*.jou
+*.log
+*.str
+*.cache/
+*.hw/
+*.sim/
+*.runs/
+*.xpr
