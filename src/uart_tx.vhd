@@ -53,7 +53,6 @@ begin
         end if;
     end process;
 
-    -- UART TX state machine
     process(clk)
     begin
         if rising_edge(clk) then
