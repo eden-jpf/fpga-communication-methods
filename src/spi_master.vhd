@@ -31,7 +31,8 @@ architecture Behavioral of spi_master is
     type tx_state_t is (S_IDLE, S_LATCH, S_START, S_SHIFT, S_FINISH);
     signal state : tx_state_t := S_IDLE;
     
-    signal shift_reg : std_logic_vector(7 downto 0) := (others => '0');
+    signal tx_reg : std_logic_vector(7 downto 0) := (others => '0');
+    signal rx_reg : std_logic_vector(7 downto 0) := (others => '0');
     signal bit_count   : integer range 0 to 7 := 0;
     
     
@@ -44,6 +45,7 @@ begin
 
 
     spi_sclk_o <= sclk_int;
+    spi_mosi_o <= tx_reg(7);
 
     process(clk_i)
     begin
@@ -53,10 +55,11 @@ begin
                 state      <= S_IDLE;
                 spi_cs_n_o <= '1';
                 busy_o     <= '0';
-                spi_mosi_o <= '0';
+                -- spi_mosi_o <= '0';
                 sclk_int   <= '0';
                 rx_data_o  <= (others => '0');
-                shift_reg  <= (others => '0');
+                tx_reg  <= (others => '0');
+                rx_reg  <= (others => '0');
             else
                 case state is
                      when S_IDLE =>
@@ -72,7 +75,7 @@ begin
                         
                      when S_LATCH =>
                         busy_o <= '1';          -- drive busy_o high
-                        shift_reg <= tx_data_i; -- latch tx_data_i to shift register
+                        tx_reg <= tx_data_i; -- latch tx_data_i to shift register
                         bit_count <= 0;
                         state <= S_START;       -- Move onto S_START
                      when S_START =>
@@ -81,7 +84,7 @@ begin
                         state <= S_SHIFT;   -- Move onto S_SHIFT
                     when S_SHIFT =>
                         -- Wait for the pulse from your tick generator
-                        if tick_i = '1' then 
+                        if tick_i = '0' then 
                             
                             -- Toggle the clock for the outside world
                             sclk_int <= not sclk_int; 
@@ -92,7 +95,7 @@ begin
                                 -- RISING EDGE LOGIC (0 -> 1)
                                 -------------------------------------------------
                                 -- Pull data in from spi_miso_i and put it in the LSB
-                                shift_reg(0) <= spi_miso_i;
+                                rx_reg <= rx_reg(6 downto 0) & spi_miso_i;
                                 
                             else
                                 -------------------------------------------------
@@ -104,12 +107,14 @@ begin
                                 --   2. Push the new MSB to spi_mosi_o
                                 --   3. Add 1 to your bit counter
                                 
-                                spi_mosi_o <= shift_reg(7);
-                                shift_reg <= shift_reg(6 downto 0) & '0';
-    
                                 if bit_count = 7 then
+                                    -- DO NOT SHIFT ON THE 8TH EDGE!
+                                    -- The final bit was just sampled on the rising edge.
+                                    -- If we shift here, we destroy the data.
                                     state <= S_FINISH;
                                 else
+                                    -- Shift left and pad with a placeholder '0'
+                                    tx_reg <= tx_reg(6 downto 0) & '0';
                                     bit_count <= bit_count + 1;
                                 end if;
                                 
@@ -118,7 +123,7 @@ begin
                         
                      when S_FINISH =>
                         spi_cs_n_o <= '1';      -- spi_cs_n_o goes HIGH
-                        rx_data_o <= shift_reg; -- 8 bits pulled from shift register are now put to the rx_data_o output port so user logic can read it
+                        rx_data_o <= rx_reg; -- 8 bits pulled from shift register are now put to the rx_data_o output port so user logic can read it
                         busy_o <= '0';          -- drive busy_o low
                         state <= S_IDLE;        -- Return to IDLE state
                 end case;

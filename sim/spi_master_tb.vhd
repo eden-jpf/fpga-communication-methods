@@ -11,24 +11,34 @@ architecture sim of spi_master_tb is
     signal clk      : std_logic := '0';
     signal tick     : std_logic := '0';
     signal start    : std_logic := '0';
-    signal reset    : std_logic := '0';
+    signal reset_n  : std_logic := '0'; -- Active-low reset
     signal busy     : std_logic;
-    signal data_in  : std_logic_vector(7 downto 0);
+    signal data_in  : std_logic_vector(7 downto 0) := (others => '0');
     signal data_out : std_logic_vector(7 downto 0);
-    signal sclk     : std_logic := '0';
+    signal sclk     : std_logic;
     signal mosi     : std_logic;
     signal miso     : std_logic;
-    signal cs     : std_logic;
-    
+    signal cs_n     : std_logic;
 
     -- Clock period (100 MHz)
     constant CLK_PERIOD : time := 10 ns;
 
-    -- Baud tick generation
-    constant TICKS_PER_BIT : integer := 16;
+    -- Frequencies for Tick Generation
+    constant SYS_CLK_FREQ : integer := 100_000_000; -- 100 MHz
+    constant SPI_CLK_FREQ : integer := 1_000_000;   -- 1 MHz
+
+    -- Calculate how many 100MHz cycles are in a half-SPI-cycle
+    constant TICKS_PER_HALF_CYCLE : integer := SYS_CLK_FREQ / (2 * SPI_CLK_FREQ);
     signal tick_count : integer := 0;
 
 begin
+
+    -- ============================
+    -- Loopback (For Testing Receives)
+    -- ============================
+    -- Wires the Master's output directly back into its input so we 
+    -- can verify that rx_data_o perfectly matches what we sent!
+    miso <= mosi;
 
     -- ============================
     -- DUT instantiation
@@ -37,15 +47,15 @@ begin
         port map (
             clk_i      => clk,
             tick_i     => tick,
-            reset_i    => reset,
+            reset_n_i  => reset_n,
             tx_data_i  => data_in,
             tx_valid_i => start,
             rx_data_o  => data_out,
             busy_o     => busy,
-            spi_sclk_o => sclk,       
+            spi_sclk_o => sclk,        
             spi_mosi_o => mosi,
             spi_miso_i => miso,
-            spi_cs_n_o => cs
+            spi_cs_n_o => cs_n
         );
 
     -- ============================
@@ -65,7 +75,7 @@ begin
     tick_process : process(clk)
     begin
         if rising_edge(clk) then
-            if tick_count = TICKS_PER_BIT - 1 then
+            if tick_count = TICKS_PER_HALF_CYCLE - 1 then
                 tick <= '1';
                 tick_count <= 0;
             else
@@ -75,5 +85,38 @@ begin
         end if;
     end process;
 
+    -- ============================
+    -- Stimulus
+    -- ============================
+    stim_process : process
+    begin
+        -- 1. Apply reset (Active Low)
+        reset_n <= '0';
+        wait for 100 ns;
+        reset_n <= '1'; -- Release reset
+        wait for 100 ns;
+        reset_n <= '0';
+        
+        -- Wait a bit before starting
+        wait for 200 ns;
+
+        -- ========= Send First Byte: 'A' (0x41) =========
+        data_in <= x"41"; 
+        start   <= '1';
+        wait for CLK_PERIOD; -- Pulse valid for exactly one clock cycle
+        start   <= '0';
+
+        -- Wait for the module to acknowledge and start transmitting
+        wait until busy = '1';
+        -- Wait for the transmission to completely finish
+        wait until busy = '0';
+        
+        -- Give the bus a little breathing room before the next transmission
+        wait for 5 us;
+
+
+        -- Stop the simulation cleanly
+        assert false report "Simulation finished successfully" severity failure;
+    end process;
 
 end architecture;
