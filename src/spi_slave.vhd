@@ -53,7 +53,7 @@ begin
     process(clk_i)
     begin
         if rising_edge(clk_i) then
-            if reset_n_i = '0' then
+            if reset_n_i = '1' then
                 sclk_sync  <= "000";
                 cs_sync    <= "111"; 
                 mosi_sync  <= "00";

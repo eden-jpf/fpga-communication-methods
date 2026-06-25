@@ -81,10 +81,12 @@ begin
                      when S_START =>
                         spi_cs_n_o <= '0';  -- wake the slave by pulling spi_cs_n_o low
                         -- wait half clock cycle to ensure slave is awake
-                        state <= S_SHIFT;   -- Move onto S_SHIFT
+                        if tick_i = '1' then
+                            state <= S_SHIFT;   
+                        end if;
                     when S_SHIFT =>
                         -- Wait for the pulse from your tick generator
-                        if tick_i = '0' then 
+                        if tick_i = '1' then 
                             
                             -- Toggle the clock for the outside world
                             sclk_int <= not sclk_int; 
